@@ -1,12 +1,11 @@
-from flask import Flask, request, render_template_string, redirect, url_for, flash
-import re
+from flask import Flask, request, render_template_string, redirect, url_for
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey'  # Needed for flash messages
 
 # In-memory phonebook data
 phonebook = []
 
+# HTML template for the phonebook
 html_template = """
 <!doctype html>
 <html lang="en">
@@ -28,26 +27,15 @@ html_template = """
                 <input type="text" class="form-control" name="phone" placeholder="Phone Number" required>
             </div>
             <div class="col">
-                <input type="email" class="form-control" name="email" placeholder="Email Address" required>
-            </div>
-            <div class="col">
                 <button type="submit" class="btn btn-primary">Add</button>
             </div>
         </div>
     </form>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="alert alert-warning" role="alert">
-          {{ messages[0] }}
-        </div>
-      {% endif %}
-    {% endwith %}
     <table class="table table-bordered">
         <thead>
             <tr>
                 <th>Name</th>
                 <th>Phone Number</th>
-                <th>Email Address</th>
             </tr>
         </thead>
         <tbody>
@@ -55,7 +43,6 @@ html_template = """
             <tr>
                 <td>{{ entry.name }}</td>
                 <td>{{ entry.phone }}</td>
-                <td>{{ entry.email }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -76,19 +63,7 @@ def index():
 def add_entry():
     name = request.form['name']
     phone = request.form['phone']
-    email = request.form['email']
-    
-    # Validate phone number (only digits)
-    if not re.match(r'^\d+$', phone):
-        flash('Phone number should contain only digits.')
-        return redirect(url_for('index'))
-    
-    # Validate email address
-    if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
-        flash('Invalid email address format.')
-        return redirect(url_for('index'))
-    
-    phonebook.append({'name': name, 'phone': phone, 'email': email})
+    phonebook.append({'name': name, 'phone': phone})
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
