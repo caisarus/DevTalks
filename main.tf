@@ -1,20 +1,9 @@
-terraform {
-  backend "s3" {
-    bucket = "caisarus"
-    key    = "terraform/terraform.tfstate"
-    region = "eu-west-3"
-  }
-}
-
 provider "aws" {
-  region = var.aws_region
+  region = "eu-west-3"
 }
-
-# Fetch all availability zones in the region
-data "aws_availability_zones" "available" {}
 
 resource "aws_iam_role" "ssm_role" {
-  name = "ssm_role_unique"
+  name = "ssm_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -41,22 +30,21 @@ resource "aws_iam_role_policy_attachment" "s3_read_policy_attachment" {
 }
 
 resource "aws_instance" "app" {
-  ami                    = var.ami_id
+  ami                    = "ami-0fc25b16af4d1f440"
   instance_type          = "t3.micro"
-  subnet_id              = var.subnet_id
+  subnet_id              = "subnet-0a82ef2b1796a3915"
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = aws_iam_instance_profile.ssm_instance_profile.name
   associate_public_ip_address = true
 
   user_data = <<-EOF
               #!/bin/bash
-              {
               sudo yum update -y
               sudo yum install -y python3 aws-cli
               sudo pip3 install flask waitress
 
               # Download the phonebook.py file from S3
-              aws s3 cp s3://${var.bucket_name}/phonebook.py /home/ec2-user/phonebook.py
+              aws s3 cp s3://caisarus/phonebook.py /home/ec2-user/phonebook.py
 
               if [ -f /home/ec2-user/phonebook.py ]; then
                 echo "phonebook.py downloaded successfully"
@@ -74,40 +62,30 @@ resource "aws_instance" "app" {
               WorkingDirectory=/home/ec2-user
               Environment="PATH=/home/ec2-user/.local/bin"
               ExecStart=/usr/bin/python3 /home/ec2-user/phonebook.py
-              StandardOutput=file:/var/log/waitress/output.log
-              StandardError=file:/var/log/waitress/error.log
 
               [Install]
               WantedBy=multi-user.target' | sudo tee /etc/systemd/system/phonebook.service
 
-              sudo mkdir -p /var/log/waitress
-              sudo touch /var/log/waitress/output.log /var/log/waitress/error.log
-              sudo chown ec2-user:ec2-user /var/log/waitress/*
-
-              # Reload systemd manager configuration
-              sudo systemctl daemon-reload
-
               # Start and enable the phonebook service
-              sudo systemctl start phonebook
-              sudo systemctl enable phonebook
-
-              # Output the status of the phonebook service for debugging
-              sudo systemctl status phonebook
-              } 2>&1 | tee /home/ec2-user/userdata.log
+              sudo systemctl enable phonebook.service
+              sudo systemctl start phonebook.service
               EOF
-
-  tags = {
-    Name = "PhonebookAppInstance"
-  }
 }
 
+
 resource "aws_iam_instance_profile" "ssm_instance_profile" {
-  name = "ssm_instance_profile_unique"
+  name = "ssm_instance_profile_${random_string.suffix.result}"
   role = aws_iam_role.ssm_role.name
 }
 
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+}
+
+
 resource "aws_security_group" "lb" {
-  vpc_id = var.vpc_id
+  vpc_id = "vpc-039f9bfc699f4d04b"
 
   ingress {
     from_port   = 80
@@ -125,7 +103,7 @@ resource "aws_security_group" "lb" {
 }
 
 resource "aws_security_group" "ec2" {
-  vpc_id = var.vpc_id
+  vpc_id = "vpc-039f9bfc699f4d04b"
 
   ingress {
     from_port   = 22
@@ -151,7 +129,7 @@ resource "aws_security_group" "ec2" {
 
 resource "aws_elb" "app" {
   name               = "phonebook-app-lb"
-  availability_zones = data.aws_availability_zones.available.names
+  availability_zones = ["eu-west-3a", "eu-west-3b", "eu-west-3c"]
 
   listener {
     instance_port     = 5000
@@ -178,16 +156,16 @@ resource "aws_elb" "app" {
 }
 
 resource "aws_route53_record" "www" {
-  zone_id = var.route53_zone_id
-  name    = "www.${var.domain_name}"
+  zone_id = "Z0937771WKWN0S65XX8S"
+  name    = "www.ec2.caisarus.net"
   type    = "CNAME"
   ttl     = 300
   records = [aws_elb.app.dns_name]
 }
 
 resource "aws_route53_record" "root" {
-  zone_id = var.route53_zone_id
-  name    = var.domain_name
+  zone_id = "Z0937771WKWN0S65XX8S"
+  name    = "ec2.caisarus.net"
   type    = "A"
   alias {
     name                   = aws_elb.app.dns_name
@@ -205,3 +183,4 @@ output "route53_record_name" {
   value       = aws_route53_record.root.fqdn
   description = "The FQDN of the Route 53 record to access the application"
 }
+
